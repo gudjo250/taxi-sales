@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#111827">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="売上管理">
+  <title>売上管理</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="icon-192.png">
+  <style>
+    :root { color-scheme: light; --bg:#f5f6f8; --card:#fff; --ink:#151922; --muted:#78808d; --line:#e8ebef; --accent:#16845b; --accent-bg:#e8f5ef; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--bg); color:var(--ink); font-family:-apple-system,BlinkMacSystemFont,"Helvetica Neue",sans-serif; padding: max(16px, env(safe-area-inset-top)) 15px max(24px, env(safe-area-inset-bottom)); }
+    .app { max-width:520px; margin:0 auto; }
+    header { display:flex; justify-content:space-between; align-items:center; margin:8px 2px 18px; }
+    h1 { font-size:22px; margin:0; font-weight:750; letter-spacing:.02em; }
+    .sub { color:var(--muted); font-size:12px; margin-top:4px; }
+    .summary { background:#111827; color:#fff; border-radius:20px; padding:20px; margin-bottom:16px; box-shadow:0 8px 24px #11182718; }
+    .summary-label { color:#c5ccd6; font-size:12px; }
+    .total { font-size:34px; line-height:1.2; font-weight:800; margin:7px 0 17px; letter-spacing:-.03em; }
+    .stats { display:grid; grid-template-columns:1fr 1fr; gap:12px; border-top:1px solid #ffffff25; padding-top:13px; }
+    .stat-label { color:#c5ccd6; font-size:11px; }
+    .stat-value { font-size:17px; font-weight:700; margin-top:4px; }
+    .panel { background:var(--card); border-radius:18px; padding:16px; box-shadow:0 2px 12px #11182708; }
+    .monthbar { display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; }
+    .month { font-size:18px; font-weight:750; }
+    button { border:0; cursor:pointer; font:inherit; }
+    .nav { background:#f0f2f5; width:36px; height:36px; border-radius:12px; font-size:20px; color:#333b47; }
+    .month-actions { display:flex; gap:8px; align-items:center; }
+    .today { background:#f0f2f5; border-radius:10px; padding:8px 11px; font-size:12px; font-weight:650; }
+    .week, .days { display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); gap:5px; }
+    .week div { text-align:center; color:var(--muted); font-size:11px; padding:4px 0 8px; }
+    .day { min-height:65px; border:1px solid var(--line); border-radius:11px; background:#fff; padding:6px 2px; display:flex; flex-direction:column; align-items:center; gap:5px; }
+    .day.empty { border-color:transparent; background:transparent; pointer-events:none; }
+    .day .num { font-size:12px; color:#4e5662; }
+    .day .amount { font-size:10px; font-weight:750; color:var(--accent); line-height:1.15; text-align:center; overflow-wrap:anywhere; }
+    .day.has { background:var(--accent-bg); border-color:#cde8da; }
+    .day.off .amount { color:#9aa1aa; }
+    .day.selected { outline:2px solid #16845b; outline-offset:1px; }
+    .day.today .num { color:var(--accent); font-weight:800; }
+    .hint { font-size:11px; color:var(--muted); margin:13px 2px 0; text-align:center; }
+    .entry { margin-top:14px; }
+    .entry-title { font-size:14px; font-weight:750; margin-bottom:10px; }
+    .entry-date { color:var(--muted); font-size:12px; margin-bottom:10px; }
+    .input-row { display:flex; gap:8px; align-items:center; }
+    input { min-width:0; flex:1; border:1px solid #dfe3e8; border-radius:12px; padding:14px 12px; font-size:19px; font-weight:700; outline:none; background:#fff; color:var(--ink); }
+    input:focus { border-color:var(--accent); box-shadow:0 0 0 3px #16845b18; }
+    .yen { color:var(--muted); font-size:14px; margin-left:-3px; }
+    .save { background:var(--accent); color:#fff; border-radius:12px; padding:14px 17px; font-weight:750; white-space:nowrap; }
+    .secondary-row { display:flex; justify-content:space-between; margin-top:10px; gap:8px; }
+    .text-btn { background:transparent; color:var(--muted); padding:8px 2px; font-size:12px; }
+    .text-btn.danger { color:#bd5353; }
+    .footer { display:flex; justify-content:space-between; margin:15px 3px 0; }
+    .footer button { background:transparent; color:#68717d; font-size:12px; padding:8px 0; }
+    .toast { position:fixed; left:50%; bottom:calc(22px + env(safe-area-inset-bottom)); transform:translateX(-50%); background:#202833; color:white; padding:11px 16px; border-radius:20px; font-size:13px; opacity:0; pointer-events:none; transition:opacity .2s; white-space:nowrap; }
+    .toast.show { opacity:1; }
+    @media (max-width:360px) { .day { min-height:58px; } .day .amount { font-size:9px; } .total { font-size:30px; } }
+  </style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div><h1>売上管理</h1><div class="sub">1日1回、最終売上を記録</div></div>
+    <div class="sub">広告なし</div>
+  </header>
+
+  <section class="summary">
+    <div class="summary-label" id="summaryMonth">今月の総売上</div>
+    <div class="total" id="total">¥0</div>
+    <div class="stats">
+      <div><div class="stat-label">出勤日数</div><div class="stat-value" id="daysWorked">0日</div></div>
+      <div><div class="stat-label">1日平均</div><div class="stat-value" id="average">¥0</div></div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="monthbar">
+      <button class="nav" id="prev" aria-label="前の月">‹</button>
+      <div class="month" id="monthTitle"></div>
+      <div class="month-actions"><button class="today" id="goToday">今月</button><button class="nav" id="next" aria-label="次の月">›</button></div>
+    </div>
+    <div class="week"><div>日</div><div>月</div><div>火</div><div>水</div><div>木</div><div>金</div><div>土</div></div>
+    <div class="days" id="calendar"></div>
+    <div class="hint">日付をタップして、その日の売上を入力</div>
+  </section>
+
+  <section class="panel entry" id="entry">
+    <div class="entry-title">売上を入力</div>
+    <div class="entry-date" id="selectedDate"></div>
+    <div class="input-row">
+      <input id="amount" type="number" inputmode="numeric" min="0" step="1" placeholder="例：28500" aria-label="売上金額">
+      <span class="yen">円</span>
+      <button class="save" id="save">保存</button>
+    </div>
+    <div class="secondary-row">
+      <button class="text-btn" id="markOff">休みとして記録</button>
+      <button class="text-btn danger" id="clear">入力を削除</button>
+    </div>
+  </section>
+
+  <div class="footer">
+    <button id="export">CSVを書き出す</button>
+    <button id="backup">データをバックアップ</button>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+<script>
+(() => {
+  const KEY = 'taxiSalesDaily_v1';
+  let records = {};
+  try { records = JSON.parse(localStorage.getItem(KEY) || '{}'); } catch(e) { records = {}; }
+  const today = new Date();
+  const $ = id => document.getElementById(id);
+  const yen = n => '¥' + Number(n || 0).toLocaleString('ja-JP');
+  const dateKey = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  let viewYear = today.getFullYear(), viewMonth = today.getMonth(), selected = dateKey(today);
+  const parseKey = k => { const [y,m,d] = k.split('-').map(Number); return new Date(y,m-1,d); };
+  const saveData = () => localStorage.setItem(KEY, JSON.stringify(records));
+  const showToast = msg => { $('toast').textContent = msg; $('toast').classList.add('show'); setTimeout(()=>$('toast').classList.remove('show'),1800); };
+  const monthPrefix = `${viewYear}-${String(viewMonth+1).padStart(2,'0')}-`;
+
+  function render() {
+    const prefix = monthPrefix;
+    const monthRecords = Object.entries(records).filter(([k])=>k.startsWith(prefix));
+    const worked = monthRecords.filter(([,v])=>v.type === 'sales' && Number(v.amount) > 0);
+    const total = worked.reduce((s,[,v])=>s+Number(v.amount),0);
+    $('summaryMonth').textContent = `${viewYear}年${viewMonth+1}月の総売上`;
+    $('total').textContent = yen(total);
+    $('daysWorked').textContent = `${worked.length}日`;
+    $('average').textContent = yen(worked.length ? Math.round(total/worked.length) : 0);
+    $('monthTitle').textContent = `${viewYear}年 ${viewMonth+1}月`;
+
+    const first = new Date(viewYear,viewMonth,1).getDay();
+    const count = new Date(viewYear,viewMonth+1,0).getDate();
+    const cells = [];
+    for(let i=0;i<first;i++) cells.push('<div class="day empty"></div>');
+    for(let day=1;day<=count;day++) {
+      const key = `${prefix}${String(day).padStart(2,'0')}`;
+      const rec = records[key];
+      const isToday = key === dateKey(today);
+      const cls = ['day',rec?.type==='sales'?'has':'',rec?.type==='off'?'off':'',key===selected?'selected':'',isToday?'today':''].filter(Boolean).join(' ');
+      let label = '';
+      if(rec?.type==='sales') label = `<div class="amount">${(Number(rec.amount)/10000).toFixed(1)}万</div>`;
+      else if(rec?.type==='off') label = '<div class="amount">休み</div>';
+      cells.push(`<button class="${cls}" data-date="${key}"><span class="num">${day}</span>${label}</button>`);
+    }
+    const totalCells = Math.ceil(cells.length/7)*7;
+    while(cells.length<totalCells) cells.push('<div class="day empty"></div>');
+    $('calendar').innerHTML = cells.join('');
+    $('calendar').querySelectorAll('[data-date]').forEach(el=>el.addEventListener('click',()=>selectDate(el.dataset.date)));
+    updateEntry();
+  }
+
+  function selectDate(key) {
+    selected = key;
+    const d = parseKey(key);
+    viewYear = d.getFullYear(); viewMonth = d.getMonth();
+    render();
+    $('amount').focus();
+  }
+  function updateEntry() {
+    const d = parseKey(selected);
+    $('selectedDate').textContent = `${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日`;
+    const rec = records[selected];
+    $('amount').value = rec?.type==='sales' ? rec.amount : '';
+    $('markOff').textContent = rec?.type==='off' ? '休みを解除' : '休みとして記録';
+  }
+  $('save').addEventListener('click',()=>{
+    const raw = $('amount').value.trim();
+    if(raw==='' || !Number.isFinite(Number(raw)) || Number(raw)<0) { showToast('金額を入力してください'); return; }
+    const amount = Math.round(Number(raw));
+    if(amount===0) { delete records[selected]; }
+    else { records[selected] = {type:'sales',amount}; }
+    saveData(); render(); showToast('売上を保存しました');
+  });
+  $('markOff').addEventListener('click',()=>{
+    if(records[selected]?.type==='off') delete records[selected];
+    else records[selected] = {type:'off'};
+    saveData(); render(); showToast('記録を更新しました');
+  });
+  $('clear').addEventListener('click',()=>{
+    if(records[selected]) { delete records[selected]; saveData(); render(); showToast('入力を削除しました'); }
+    else showToast('削除する記録がありません');
+  });
+  $('prev').addEventListener('click',()=>{ viewMonth--; if(viewMonth<0){viewMonth=11;viewYear--;} selected=dateKey(new Date(viewYear,viewMonth,1)); render(); });
+  $('next').addEventListener('click',()=>{ viewMonth++; if(viewMonth>11){viewMonth=0;viewYear++;} selected=dateKey(new Date(viewYear,viewMonth,1)); render(); });
+  $('goToday').addEventListener('click',()=>{viewYear=today.getFullYear();viewMonth=today.getMonth();selected=dateKey(today);render();});
+  $('export').addEventListener('click',()=>{
+    const rows = [['日付','区分','売上(円)']];
+    Object.keys(records).sort().forEach(k=>{const v=records[k];rows.push([k,v.type==='off'?'休み':'売上',v.type==='sales'?v.amount:'']);});
+    const csv = '\uFEFF' + rows.map(r=>r.map(x=>`"${String(x).replaceAll('"','""')}"`).join(',')).join('\r\n');
+    const blob = new Blob([csv],{type:'text/csv;charset=utf-8'});
+    const url = URL.createObjectURL(blob); const a=document.createElement('a');a.href=url;a.download='売上記録.csv';a.click();URL.revokeObjectURL(url);
+  });
+  $('backup').addEventListener('click',()=>{
+    const blob = new Blob([JSON.stringify(records,null,2)],{type:'application/json'});
+    const url = URL.createObjectURL(blob); const a=document.createElement('a');a.href=url;a.download='売上データ_backup.json';a.click();URL.revokeObjectURL(url);
+  });
+  render();
+  if('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('./sw.js').catch(()=>{});
+})();
+</script>
+</body>
+</html>

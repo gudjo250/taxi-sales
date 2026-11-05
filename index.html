@@ -36,6 +36,8 @@
     .day { min-height:65px; border:1px solid var(--line); border-radius:11px; background:#fff; padding:6px 2px; display:flex; flex-direction:column; align-items:center; gap:5px; }
     .day.empty { border-color:transparent; background:transparent; pointer-events:none; }
     .day .num { font-size:12px; color:#4e5662; }
+    .day .month-mark { font-size:9px; color:#9aa1aa; line-height:1; }
+    .day.other-month { background:#fafbfc; }
     .day .amount { font-size:10px; font-weight:750; color:var(--accent); line-height:1.15; text-align:center; overflow-wrap:anywhere; }
     .day.has { background:var(--accent-bg); border-color:#cde8da; }
     .day.off .amount { color:#9aa1aa; }
@@ -68,7 +70,7 @@
   </header>
 
   <section class="summary">
-    <div class="summary-label" id="summaryMonth">今月の総売上</div>
+    <div class="summary-label" id="summaryMonth">締め期間の総売上</div>
     <div class="total" id="total">¥0</div>
     <div class="stats">
       <div><div class="stat-label">出勤日数</div><div class="stat-value" id="daysWorked">0日</div></div>
@@ -84,7 +86,7 @@
     </div>
     <div class="week"><div>日</div><div>月</div><div>火</div><div>水</div><div>木</div><div>金</div><div>土</div></div>
     <div class="days" id="calendar"></div>
-    <div class="hint">日付をタップして、その日の売上を入力</div>
+    <div class="hint">毎月16日〜翌月15日締め ／ 日付をタップして売上を入力</div>
   </section>
 
   <section class="panel entry" id="entry">
@@ -116,36 +118,42 @@
   const $ = id => document.getElementById(id);
   const yen = n => '¥' + Number(n || 0).toLocaleString('ja-JP');
   const dateKey = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-  let viewYear = today.getFullYear(), viewMonth = today.getMonth(), selected = dateKey(today);
+  // viewYear/viewMonth は締め月（例：2026年11月度 = 10/16〜11/15）
+  const closingMonth = d => new Date(d.getFullYear(), d.getMonth() + (d.getDate() >= 16 ? 1 : 0), 1);
+  const initialPeriod = closingMonth(today);
+  let viewYear = initialPeriod.getFullYear(), viewMonth = initialPeriod.getMonth(), selected = dateKey(today);
   const parseKey = k => { const [y,m,d] = k.split('-').map(Number); return new Date(y,m-1,d); };
   const saveData = () => localStorage.setItem(KEY, JSON.stringify(records));
   const showToast = msg => { $('toast').textContent = msg; $('toast').classList.add('show'); setTimeout(()=>$('toast').classList.remove('show'),1800); };
-  const monthPrefix = `${viewYear}-${String(viewMonth+1).padStart(2,'0')}-`;
-
   function render() {
-    const prefix = monthPrefix;
-    const monthRecords = Object.entries(records).filter(([k])=>k.startsWith(prefix));
-    const worked = monthRecords.filter(([,v])=>v.type === 'sales' && Number(v.amount) > 0);
-    const total = worked.reduce((s,[,v])=>s+Number(v.amount),0);
-    $('summaryMonth').textContent = `${viewYear}年${viewMonth+1}月の総売上`;
+    const periodStart = new Date(viewYear, viewMonth - 1, 16);
+    const periodEnd = new Date(viewYear, viewMonth, 15);
+    const startKey = dateKey(periodStart), endKey = dateKey(periodEnd);
+    const periodRecords = Object.entries(records).filter(([k]) => k >= startKey && k <= endKey);
+    const worked = periodRecords.filter(([,v]) => v.type === 'sales' && Number(v.amount) > 0);
+    const total = worked.reduce((sum,[,v]) => sum + Number(v.amount), 0);
+    $('summaryMonth').textContent = `${viewYear}年${viewMonth+1}月度の総売上（${viewMonth===0?viewYear-1:viewYear}年${periodStart.getMonth()+1}月16日〜${viewMonth+1}月15日）`;
     $('total').textContent = yen(total);
     $('daysWorked').textContent = `${worked.length}日`;
     $('average').textContent = yen(worked.length ? Math.round(total/worked.length) : 0);
-    $('monthTitle').textContent = `${viewYear}年 ${viewMonth+1}月`;
+    $('monthTitle').textContent = `${viewYear}年 ${viewMonth+1}月度`;
 
-    const first = new Date(viewYear,viewMonth,1).getDay();
-    const count = new Date(viewYear,viewMonth+1,0).getDate();
+    const first = periodStart.getDay();
+    const count = Math.round((periodEnd - periodStart) / 86400000) + 1;
     const cells = [];
     for(let i=0;i<first;i++) cells.push('<div class="day empty"></div>');
-    for(let day=1;day<=count;day++) {
-      const key = `${prefix}${String(day).padStart(2,'0')}`;
+    for(let i=0;i<count;i++) {
+      const d = new Date(periodStart.getFullYear(), periodStart.getMonth(), periodStart.getDate()+i);
+      const key = dateKey(d);
       const rec = records[key];
       const isToday = key === dateKey(today);
-      const cls = ['day',rec?.type==='sales'?'has':'',rec?.type==='off'?'off':'',key===selected?'selected':'',isToday?'today':''].filter(Boolean).join(' ');
+      const otherMonth = d.getMonth() !== viewMonth;
+      const cls = ['day',rec?.type==='sales'?'has':'',rec?.type==='off'?'off':'',key===selected?'selected':'',isToday?'today':'',otherMonth?'other-month':''].filter(Boolean).join(' ');
       let label = '';
       if(rec?.type==='sales') label = `<div class="amount">${(Number(rec.amount)/10000).toFixed(1)}万</div>`;
       else if(rec?.type==='off') label = '<div class="amount">休み</div>';
-      cells.push(`<button class="${cls}" data-date="${key}"><span class="num">${day}</span>${label}</button>`);
+      const monthMark = (d.getDate()===16 || d.getDate()===1) ? `<span class="month-mark">${d.getMonth()+1}月</span>` : '';
+      cells.push(`<button class="${cls}" data-date="${key}"><span class="num">${d.getDate()}</span>${monthMark}${label}</button>`);
     }
     const totalCells = Math.ceil(cells.length/7)*7;
     while(cells.length<totalCells) cells.push('<div class="day empty"></div>');
@@ -157,7 +165,8 @@
   function selectDate(key) {
     selected = key;
     const d = parseKey(key);
-    viewYear = d.getFullYear(); viewMonth = d.getMonth();
+    const p = closingMonth(d);
+    viewYear = p.getFullYear(); viewMonth = p.getMonth();
     render();
     $('amount').focus();
   }
@@ -185,9 +194,9 @@
     if(records[selected]) { delete records[selected]; saveData(); render(); showToast('入力を削除しました'); }
     else showToast('削除する記録がありません');
   });
-  $('prev').addEventListener('click',()=>{ viewMonth--; if(viewMonth<0){viewMonth=11;viewYear--;} selected=dateKey(new Date(viewYear,viewMonth,1)); render(); });
-  $('next').addEventListener('click',()=>{ viewMonth++; if(viewMonth>11){viewMonth=0;viewYear++;} selected=dateKey(new Date(viewYear,viewMonth,1)); render(); });
-  $('goToday').addEventListener('click',()=>{viewYear=today.getFullYear();viewMonth=today.getMonth();selected=dateKey(today);render();});
+  $('prev').addEventListener('click',()=>{ viewMonth--; if(viewMonth<0){viewMonth=11;viewYear--;} selected=dateKey(new Date(viewYear,viewMonth-1,16)); render(); });
+  $('next').addEventListener('click',()=>{ viewMonth++; if(viewMonth>11){viewMonth=0;viewYear++;} selected=dateKey(new Date(viewYear,viewMonth-1,16)); render(); });
+  $('goToday').addEventListener('click',()=>{const p=closingMonth(today);viewYear=p.getFullYear();viewMonth=p.getMonth();selected=dateKey(today);render();});
   $('export').addEventListener('click',()=>{
     const rows = [['日付','区分','売上(円)']];
     Object.keys(records).sort().forEach(k=>{const v=records[k];rows.push([k,v.type==='off'?'休み':'売上',v.type==='sales'?v.amount:'']);});
